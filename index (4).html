@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Power Grid Europe — Elektroenergetski Simulator</title>
+<style>
+  :root{
+    --bg:#06090d;
+    --bg2:#0b1320;
+    --panel:#0e1828cc;
+    --panel-solid:#0e1828;
+    --border:#1d3148;
+    --grid:#152134;
+    --line:#1e3a5f;
+    --live:#22d3ee;
+    --live-2:#7df9ff;
+    --hot:#fb923c;
+    --hot-2:#fde68a;
+    --bad:#ef4444;
+    --good:#34d399;
+    --muted:#94a3b8;
+    --text:#e2e8f0;
+    --gold:#facc15;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:'Inter','Segoe UI',system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+
+  /* === LOADING SCREEN === */
+  #loadingScreen{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#0c1830 0%,#04070d 70%);
+    transition:opacity .6s ease}
+  #loadingScreen.hide{opacity:0;pointer-events:none}
+  #loadingMap{position:absolute;inset:0;opacity:.35}
+  .ld-logo{position:relative;z-index:2;text-align:center;margin-bottom:60px}
+  .ld-logo .bolt{font-size:80px;line-height:1;color:var(--live);
+    text-shadow:0 0 30px var(--live),0 0 60px #22d3ee88;animation:flicker 2.4s infinite}
+  @keyframes flicker{0%,100%{opacity:1}48%{opacity:1}50%{opacity:.4}52%{opacity:1}}
+  .ld-logo h1{font-size:42px;font-weight:800;letter-spacing:8px;margin-top:10px;
+    background:linear-gradient(180deg,#e2e8f0,#7dd3fc);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .ld-logo .sub{color:var(--muted);letter-spacing:3px;font-size:12px;margin-top:8px;text-transform:uppercase}
+  .progressWrap{position:relative;z-index:2;width:min(520px,80vw)}
+  .progressBar{height:6px;background:var(--grid);border-radius:6px;overflow:hidden;position:relative}
+  .progressFill{height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#7df9ff,#22d3ee);
+    background-size:200% 100%;animation:slide 1.5s linear infinite;
+    box-shadow:0 0 20px var(--live);transition:width .3s ease}
+  @keyframes slide{0%{background-position:0 0}100%{background-position:200% 0}}
+  .progressInfo{display:flex;justify-content:space-between;margin-top:14px;font-size:13px;
+    color:var(--muted);font-family:'JetBrains Mono',monospace}
+  .progressInfo .pct{color:var(--live);font-weight:700}
+
+  /* === GAME === */
+  #game{position:fixed;inset:0;display:none}
+  #game.active{display:block}
+  #map{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;background:#04070d}
+
+  /* HUD */
+  #hud{position:absolute;top:0;left:0;right:0;padding:12px;display:flex;gap:8px;flex-wrap:wrap;
+    pointer-events:none;z-index:10}
+  .stat{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--border);
+    border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:8px;
+    pointer-events:auto;font-size:13px;font-weight:600}
+  .stat .ic{font-size:18px;line-height:1}
+  .stat .lbl{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:500}
+  .stat .val{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px}
+  .stat.money .val{color:var(--gold)}
+  .stat.xp .val{color:var(--live)}
+  .stat.rep .val{color:#a78bfa}
+  .stat.sec .val{color:var(--good)}
+  .stat.lvl{background:linear-gradient(135deg,#1e3a8a,#0c4a6e);border-color:#3b82f6}
+  .stat.lvl .val{color:#fff;font-size:16px}
+
+  /* Sidebar */
+  #sidebar{position:absolute;right:12px;top:80px;display:flex;flex-direction:column;gap:8px;z-index:10}
+  .sb-btn{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--border);
+    border-radius:10px;width:52px;height:52px;font-size:22px;display:flex;align-items:center;
+    justify-content:center;position:relative;transition:all .2s}
+  .sb-btn:hover{border-color:var(--live);transform:translateY(-1px)}
+  .sb-btn .badge{position:absolute;top:-4px;right:-4px;background:var(--bad);color:#fff;
+    font-size:10px;font-weight:700;border-radius:10px;padding:2px 6px;min-width:18px;text-align:center;
+    font-family:'JetBrains Mono',monospace;border:2px solid var(--bg)}
+  .sb-btn .tip{position:absolute;right:60px;top:50%;transform:translateY(-50%);
+    background:var(--panel-solid);border:1px solid var(--border);padding:6px 10px;border-radius:6px;
+    font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s}
+  .sb-btn:hover .tip{opacity:1}
+
+  /* Bottom log */
+  #log{position:absolute;left:12px;bottom:12px;width:min(420px,60vw);max-height:160px;
+    overflow:hidden;pointer-events:none;z-index:10}
+  .logEntry{background:var(--panel);backdrop-filter:blur(10px);border:1px solid var(--border);
+    border-left:3px solid var(--live);border-radius:6px;padding:6px 10px;margin-top:6px;
+    font-size:12px;animation:logIn .3s ease;font-family:'JetBrains Mono',monospace}
+  .logEntry.warn{border-left-color:var(--hot)}
+  .logEntry.bad{border-left-color:var(--bad)}
+  .logEntry.good{border-left-color:var(--good)}
+  .logEntry .t{color:var(--muted);font-size:10px;margin-right:6px}
+  @keyframes logIn{from{transform:translateX(-20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+  /* Time indicator */
+  #timeBar{position:absolute;bottom:12px;right:12px;background:var(--panel);
+    backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:10px;
+    padding:8px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;
+    display:flex;align-items:center;gap:12px;z-index:10}
+  #timeBar .weather{font-size:18px}
+  #timeBar .clock{color:var(--live);font-weight:700;font-size:14px}
+
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:#000b;backdrop-filter:blur(4px);
+    z-index:100;display:none;align-items:center;justify-content:center;padding:20px;
+    animation:fadeIn .25s ease}
+  .overlay.show{display:flex}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .modal{background:linear-gradient(180deg,#0e1828,#0a1320);border:1px solid var(--border);
+    border-radius:14px;padding:22px;width:100%;max-width:520px;max-height:90vh;overflow:auto;
+    box-shadow:0 20px 60px #000a,0 0 80px #22d3ee22}
+  .modal h2{font-size:20px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+  .modal h2 .badge-lvl{background:var(--bad);color:#fff;padding:2px 8px;border-radius:6px;
+    font-size:11px;font-family:'JetBrains Mono',monospace}
+  .modal .desc{color:var(--muted);font-size:13px;margin-bottom:16px;line-height:1.5}
+  .modal .reward{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;padding:10px;
+    background:var(--grid);border-radius:8px;font-size:12px;font-family:'JetBrains Mono',monospace}
+  .modal .reward span{display:flex;gap:4px;align-items:center}
+  .modal .actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  .btn{padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;
+    border:1px solid var(--border);background:var(--grid);transition:all .15s}
+  .btn:hover{border-color:var(--live);background:#1a2a44}
+  .btn.primary{background:linear-gradient(135deg,#0891b2,#0e7490);border-color:#22d3ee;color:#fff}
+  .btn.primary:hover{background:linear-gradient(135deg,#06b6d4,#0891b2)}
+  .btn.danger{background:#7f1d1d;border-color:#ef4444;color:#fff}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* Task widgets */
+  .taskArea{background:var(--bg);border:1px dashed var(--border);border-radius:10px;
+    padding:18px;margin:12px 0;min-height:160px;position:relative}
+  .wireGrid{display:grid;gap:10px}
+  .wireRow{display:flex;align-items:center;gap:10px;justify-content:center}
+  .wireBtn{width:48px;height:48px;border-radius:8px;background:var(--grid);border:1px solid var(--border);
+    font-size:20px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .wireBtn:hover{transform:scale(1.05);border-color:var(--live)}
+  .wireBtn.on{background:var(--live);color:#000;border-color:var(--live-2);box-shadow:0 0 16px var(--live)}
+  .wireBtn.wrong{background:var(--bad);border-color:var(--bad);animation:shake .3s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  .numInput{width:100%;padding:12px;font-size:18px;background:var(--grid);border:1px solid var(--border);
+    border-radius:8px;color:var(--text);text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700}
+  .numInput:focus{outline:none;border-color:var(--live)}
+  .options{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .opt{padding:14px;background:var(--grid);border:1px solid var(--border);border-radius:8px;
+    text-align:left;font-size:13px;line-height:1.4;transition:all .15s}
+  .opt:hover{border-color:var(--live);background:#1a2a44}
+  .opt.picked{border-color:var(--live);background:#0c4a5a}
+
+  /* Timing bar (zaštita mreže) */
+  .timingBar{height:30px;background:linear-gradient(90deg,var(--bad) 0%,var(--bad) 30%,
+    var(--good) 30%,var(--good) 60%,var(--bad) 60%,var(--bad) 100%);
+    border-radius:8px;position:relative;overflow:hidden;border:1px solid var(--border)}
+  .timingMarker{position:absolute;top:0;bottom:0;width:3px;background:#fff;
+    box-shadow:0 0 8px #fff;left:0;animation:sweep 1.6s linear infinite alternate}
+  @keyframes sweep{from{left:0%}to{left:calc(100% - 3px)}}
+
+  /* Calc problem */
+  .calcDisplay{font-size:28px;text-align:center;padding:20px;font-family:'JetBrains Mono',monospace;
+    background:var(--grid);border-radius:8px;color:var(--live-2);font-weight:700}
+
+  /* Build / Research menu */
+  .menu-list{display:grid;gap:10px;margin-top:14px}
+  .menu-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--grid);
+    border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s}
+  .menu-item:hover:not(.locked){border-color:var(--live);transform:translateX(2px)}
+  .menu-item.locked{opacity:.5;cursor:not-allowed}
+  .menu-item.owned{border-color:var(--good);background:#0a2a1a}
+  .menu-item .mi-ic{font-size:28px;width:46px;text-align:center}
+  .menu-item .mi-body{flex:1}
+  .menu-item .mi-name{font-weight:600;font-size:14px}
+  .menu-item .mi-desc{color:var(--muted);font-size:11px;margin-top:2px}
+  .menu-item .mi-cost{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);font-weight:700}
+  .menu-tabs{display:flex;gap:4px;background:var(--grid);padding:4px;border-radius:10px;margin-bottom:10px}
+  .menu-tab{flex:1;padding:8px;border-radius:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .menu-tab.active{background:var(--live);color:#000}
+
+  /* Welcome screen */
+  .welcome-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+  .welcome-cell{background:var(--grid);padding:8px;border-radius:6px;text-align:center;font-size:11px}
+  .welcome-cell .em{font-size:20px;display:block;margin-bottom:4px}
+
+  /* Toast */
+  #toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:200;
+    display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+  .toast{background:var(--panel-solid);border:1px solid var(--border);border-left:4px solid var(--live);
+    padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;
+    box-shadow:0 8px 30px #000a;animation:toastIn .3s ease;max-width:90vw}
+  .toast.good{border-left-color:var(--good)}
+  .toast.bad{border-left-color:var(--bad)}
+  .toast.warn{border-left-color:var(--hot)}
+  @keyframes toastIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  /* Level up screen */
+  .levelUp{text-align:center;padding:20px}
+  .levelUp .big{font-size:60px;color:var(--gold);text-shadow:0 0 30px var(--gold);margin:10px 0}
+  .levelUp h2{font-size:24px;margin-bottom:8px}
+  .levelUp .unlocked{margin-top:14px;padding:14px;background:var(--grid);border-radius:8px;text-align:left}
+  .levelUp .unlocked h4{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .levelUp .unlocked div{padding:4px 0;font-size:13px}
+
+  /* Smaller mobile */
+  @media (max-width:640px){
+    .ld-logo h1{font-size:30px;letter-spacing:4px}
+    .stat .lbl{display:none}
+    .stat{padding:6px 10px;font-size:12px}
+    #log{width:80vw;max-height:100px}
+    #sidebar{top:72px}
+    .sb-btn{width:46px;height:46px;font-size:18px}
+    .options{grid-template-columns:1fr}
+    .welcome-grid{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+
+<!-- ====== LOADING SCREEN ====== -->
+<div id="loadingScreen">
+  <canvas id="loadingMap"></canvas>
+  <div class="ld-logo">
+    <div class="bolt">⚡</div>
+    <h1>POWER GRID</h1>
+    <div class="sub">Europe · Elektroenergetski Simulator</div>
+  </div>
+  <div class="progressWrap">
+    <div class="progressBar"><div class="progressFill" id="loadFill"></div></div>
+    <div class="progressInfo">
+      <span id="loadMsg">Inicijalizacija sistema...</span>
+      <span class="pct" id="loadPct">0%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ====== GAME ====== -->
+<div id="game">
+  <canvas id="map"></canvas>
+
+  <div id="hud">
+    <div class="stat money"><span class="ic">💰</span><div><div class="lbl">Novac</div><div class="val" id="hMoney">1000</div></div></div>
+    <div class="stat xp"><span class="ic">⚡</span><div><div class="lbl">XP</div><div class="val" id="hXp">0</div></div></div>
+    <div class="stat rep"><span class="ic">👥</span><div><div class="lbl">Reputacija</div><div class="val" id="hRep">50</div></div></div>
+    <div class="stat sec"><span class="ic">🛡️</span><div><div class="lbl">Sigurnost</div><div class="val" id="hSec">100</div></div></div>
+    <div class="stat lvl"><span class="ic">📊</span><div><div class="lbl">Level</div><div class="val" id="hLvl">1</div></div></div>
+  </div>
+
+  <div id="sidebar">
+    <button class="sb-btn" onclick="openBuild()">🏗️<span class="tip">Gradnja</span></button>
+    <button class="sb-btn" onclick="openResearch()">🔬<span class="tip">Istraživanje</span></button>
+    <button class="sb-btn" onclick="openFaults()" id="sbFaults">⚠️<span class="badge" id="faultBadge">0</span><span class="tip">Kvarovi</span></button>
+    <button class="sb-btn" onclick="openInfo()">ℹ️<span class="tip">Info</span></button>
+  </div>
+
+  <div id="log"></div>
+  <div id="timeBar">
+    <span class="weather" id="wxIcon">☀️</span>
+    <span id="wxTxt">Vedro</span>
+    <span class="clock" id="clock">08:00</span>
+  </div>
+</div>
+
+<!-- ====== MODALS / TOAST ====== -->
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ====================================================
+   KONFIG: KOORDINATE I PODACI
+   ==================================================== */
+
+// Pojednostavljeni poligoni evropskih država u koordinatnom prostoru mape (0–1600 x 0–1000)
+const COUNTRIES = {
+  BA: { name:'Bosna i Hercegovina', level:1, color:'#22543d',
+    poly:[[770,540],[810,535],[845,545],[860,565],[855,595],[825,615],[790,620],[760,605],[755,575]] },
+  HR: { name:'Hrvatska', level:2, color:'#1e3a5f',
+    poly:[[680,490],[760,505],[770,540],[755,575],[745,605],[700,620],[670,605],[640,580],[660,540]] },
+  RS: { name:'Srbija', level:2, color:'#2a3a52',
+    poly:[[845,545],[890,520],[935,530],[945,575],[920,615],[885,620],[855,595]] },
+  SI: { name:'Slovenija', level:3, color:'#22542d',
+    poly:[[640,480],[695,475],[700,500],[680,510],[645,505]] },
+  ME: { name:'Crna Gora', level:3, color:'#2d3a52',
+    poly:[[825,615],[860,615],[875,640],[855,660],[820,650]] },
+  MK: { name:'Sjev. Makedonija', level:3, color:'#2a3a52',
+    poly:[[885,620],[930,625],[940,655],[910,670],[880,655]] },
+  DE: { name:'Njemačka', level:4, color:'#3a2e1e',
+    poly:[[540,260],[680,250],[700,310],[695,375],[660,420],[600,425],[555,400],[525,340]] },
+  FR: { name:'Francuska', level:5, color:'#2d1e3a',
+    poly:[[340,330],[510,330],[540,400],[530,460],[490,510],[420,520],[370,495],[330,440],[315,380]] },
+  IT: { name:'Italija', level:6, color:'#3a1e2e',
+    poly:[[560,440],[620,430],[640,470],[650,520],[635,580],[610,620],[640,680],[620,720],[590,700],[600,640],[580,580],[560,510]] },
+  AT: { name:'Austrija', level:6, color:'#3a3a1e',
+    poly:[[600,425],[695,420],[700,460],[680,475],[640,480],[610,470]] },
+  HU: { name:'Mađarska', level:6, color:'#2e3a1e',
+    poly:[[700,470],[800,475],[810,505],[790,535],[765,540],[710,520]] },
+  PL: { name:'Poljska', level:6, color:'#1e3a3a',
+    poly:[[695,260],[850,255],[870,310],[855,370],[810,390],[750,385],[700,360],[695,310]] },
+  CZ: { name:'Češka', level:6, color:'#3a1e3a',
+    poly:[[680,375],[760,375],[770,410],[745,430],[695,425]] },
+  SK: { name:'Slovačka', level:6, color:'#3a2a1e',
+    poly:[[770,400],[850,395],[855,425],[810,440],[775,430]] },
+  RO: { name:'Rumunija', level:7, color:'#2a1e3a',
+    poly:[[895,475],[1000,465],[1020,515],[1010,560],[955,575],[920,560],[895,520]] },
+  BG: { name:'Bugarska', level:7, color:'#3a1e1e',
+    poly:[[920,570],[1010,565],[1020,610],[990,640],[945,640],[920,615]] },
+  GR: { name:'Grčka', level:7, color:'#1e3a2e',
+    poly:[[875,650],[950,650],[970,700],[945,750],[895,740],[865,700]] },
+  AL: { name:'Albanija', level:7, color:'#3a2e3a',
+    poly:[[860,665],[890,665],[895,720],[870,735],[855,710]] },
+  ES: { name:'Španija', level:7, color:'#3a2a1e',
+    poly:[[180,500],[330,500],[345,560],[320,620],[260,640],[195,625],[160,580]] },
+  PT: { name:'Portugal', level:7, color:'#1e3a3a',
+    poly:[[130,520],[175,520],[180,610],[150,625],[120,600]] },
+  NL: { name:'Nizozemska', level:7, color:'#1e2a3a',
+    poly:[[510,290],[545,285],[555,320],[535,335],[510,325]] },
+  BE: { name:'Belgija', level:7, color:'#2a2a3a',
+    poly:[[480,330],[525,330],[535,360],[505,375],[475,360]] },
+  CH: { name:'Švicarska', level:7, color:'#3a1e1e',
+    poly:[[545,400],[610,400],[615,435],[585,445],[550,430]] },
+  GB: { name:'Velika Britanija', level:7, color:'#1e3a2a',
+    poly:[[330,200],[395,205],[410,265],[395,320],[365,335],[340,320],[325,275]] },
+  IE: { name:'Irska', level:7, color:'#1e3a1e',
+    poly:[[265,240],[310,245],[315,295],[290,315],[265,305],[255,275]] },
+  DK: { name:'Danska', level:7, color:'#3a1e2e',
+    poly:[[565,210],[610,205],[620,240],[600,255],[570,245]] },
+  SE: { name:'Švedska', level:7, color:'#1e2a3a',
+    poly:[[615,80],[695,85],[715,180],[680,225],[640,230],[620,180]] },
+  NO: { name:'Norveška', level:7, color:'#2a1e3a',
+    poly:[[530,60],[605,70],[615,180],[600,210],[560,210],[535,175],[520,120]] },
+  FI: { name:'Finska', level:7, color:'#1e3a3a',
+    poly:[[710,80],[795,95],[815,200],[780,225],[735,210],[720,150]] },
+  LT: { name:'Litvanija', level:7, color:'#3a2e1e',
+    poly:[[795,235],[855,235],[865,265],[840,285],[800,275]] },
+  LV: { name:'Latvija', level:7, color:'#2e3a1e',
+    poly:[[795,200],[860,200],[870,235],[840,240],[795,230]] },
+  EE: { name:'Estonija', level:7, color:'#1e3a3a',
+    poly:[[795,170],[855,170],[865,200],[840,205],[795,195]] }
+};
+
+// Predefinisana mjesta (gradovi + elektrane). x,y u mapa-koordinatama.
+const PLACES = [
+  // BiH
+  { id:'sa', country:'BA', kind:'city', size:'lg', name:'Sarajevo', x:810, y:585, demand:50 },
+  { id:'mo', country:'BA', kind:'city', size:'md', name:'Mostar', x:790, y:610, demand:25 },
+  { id:'bl', country:'BA', kind:'city', size:'md', name:'Banja Luka', x:778, y:555, demand:25 },
+  { id:'tz', country:'BA', kind:'city', size:'sm', name:'Tuzla', x:830, y:560, demand:15 },
+  { id:'hejablanica', country:'BA', kind:'plant', ptype:'hydro', name:'HE Jablanica', x:798, y:595, cap:90 },
+  { id:'tetuzla', country:'BA', kind:'plant', ptype:'thermal', name:'TE Tuzla', x:835, y:555, cap:120 },
+  { id:'sub_sa', country:'BA', kind:'sub', name:'TS Sarajevo', x:815, y:580 },
+
+  // Hrvatska
+  { id:'zg', country:'HR', kind:'city', size:'lg', name:'Zagreb', x:710, y:520, demand:55 },
+  { id:'st', country:'HR', kind:'city', size:'md', name:'Split', x:720, y:585, demand:30 },
+  { id:'ri', country:'HR', kind:'city', size:'sm', name:'Rijeka', x:680, y:540, demand:20 },
+  { id:'henhh', country:'HR', kind:'plant', ptype:'hydro', name:'HE Senj', x:690, y:545, cap:80 },
+  { id:'tep', country:'HR', kind:'plant', ptype:'thermal', name:'TE Plomin', x:670, y:530, cap:70 },
+  { id:'nekrsko', country:'HR', kind:'plant', ptype:'nuclear', name:'NE Krško', x:700, y:505, cap:200, share:'SI' },
+  { id:'sub_zg', country:'HR', kind:'sub', name:'TS Zagreb', x:712, y:518 },
+
+  // Srbija
+  { id:'bg', country:'RS', kind:'city', size:'lg', name:'Beograd', x:895, y:555, demand:60 },
+  { id:'ns', country:'RS', kind:'city', size:'md', name:'Novi Sad', x:880, y:535, demand:25 },
+  { id:'nis', country:'RS', kind:'city', size:'sm', name:'Niš', x:920, y:595, demand:20 },
+  { id:'tenikola', country:'RS', kind:'plant', ptype:'thermal', name:'TE Nikola Tesla', x:890, y:560, cap:150 },
+  { id:'hedjerdap', country:'RS', kind:'plant', ptype:'hydro', name:'HE Đerdap', x:940, y:555, cap:120 },
+  { id:'sub_bg', country:'RS', kind:'sub', name:'TS Beograd', x:898, y:558 },
+
+  // Slovenija, CG, MK
+  { id:'lj', country:'SI', kind:'city', size:'md', name:'Ljubljana', x:670, y:495, demand:30 },
+  { id:'pg', country:'ME', kind:'city', size:'sm', name:'Podgorica', x:850, y:640, demand:15 },
+  { id:'sk', country:'MK', kind:'city', size:'sm', name:'Skoplje', x:905, y:650, demand:20 },
+  { id:'sol_mk', country:'MK', kind:'plant', ptype:'solar', name:'Solarni park Bitola', x:915, y:660, cap:60 },
+
+  // Njemačka
+  { id:'be', country:'DE', kind:'city', size:'lg', name:'Berlin', x:640, y:300, demand:80 },
+  { id:'mu', country:'DE', kind:'city', size:'lg', name:'München', x:600, y:395, demand:70 },
+  { id:'hh', country:'DE', kind:'city', size:'md', name:'Hamburg', x:585, y:265, demand:40 },
+  { id:'fr', country:'DE', kind:'city', size:'md', name:'Frankfurt', x:565, y:350, demand:40 },
+  { id:'wind_de', country:'DE', kind:'plant', ptype:'wind', name:'Vjetropark Sjever', x:580, y:255, cap:140 },
+  { id:'sol_de', country:'DE', kind:'plant', ptype:'solar', name:'Solarni park Bavarska', x:610, y:400, cap:100 },
+  { id:'te_de', country:'DE', kind:'plant', ptype:'thermal', name:'TE Ruhr', x:560, y:340, cap:160 },
+
+  // Francuska
+  { id:'pa', country:'FR', kind:'city', size:'lg', name:'Pariz', x:430, y:375, demand:90 },
+  { id:'ly', country:'FR', kind:'city', size:'md', name:'Lyon', x:480, y:445, demand:45 },
+  { id:'ma', country:'FR', kind:'city', size:'md', name:'Marseille', x:500, y:495, demand:40 },
+  { id:'ne_fr1', country:'FR', kind:'plant', ptype:'nuclear', name:'NE Gravelines', x:415, y:340, cap:250 },
+  { id:'ne_fr2', country:'FR', kind:'plant', ptype:'nuclear', name:'NE Bugey', x:475, y:440, cap:240 },
+  { id:'wind_fr', country:'FR', kind:'plant', ptype:'wind', name:'Vjetropark Atlantik', x:355, y:430, cap:100 },
+
+  // Italija
+  { id:'ro', country:'IT', kind:'city', size:'lg', name:'Rim', x:615, y:585, demand:75 },
+  { id:'mi', country:'IT', kind:'city', size:'md', name:'Milano', x:585, y:475, demand:60 },
+  { id:'na', country:'IT', kind:'city', size:'md', name:'Napulj', x:630, y:615, demand:40 },
+  { id:'sol_it', country:'IT', kind:'plant', ptype:'solar', name:'Solarni park Sicilija', x:618, y:705, cap:90 },
+  { id:'te_it', country:'IT', kind:'plant', ptype:'thermal', name:'TE Civitavecchia', x:608, y:585, cap:140 },
+
+  // Ostali (gradovi, manje detalja)
+  { id:'wa', country:'PL', kind:'city', size:'lg', name:'Varšava', x:780, y:325, demand:70 },
+  { id:'pr', country:'CZ', kind:'city', size:'md', name:'Prag', x:715, y:395, demand:40 },
+  { id:'vi', country:'AT', kind:'city', size:'md', name:'Beč', x:680, y:440, demand:45 },
+  { id:'bp', country:'HU', kind:'city', size:'md', name:'Budimpešta', x:760, y:495, demand:45 },
+  { id:'bu', country:'RO', kind:'city', size:'md', name:'Bukurešt', x:975, y:545, demand:50 },
+  { id:'so', country:'BG', kind:'city', size:'md', name:'Sofija', x:955, y:610, demand:35 },
+  { id:'at', country:'GR', kind:'city', size:'md', name:'Atina', x:920, y:725, demand:40 },
+  { id:'ma_es', country:'ES', kind:'city', size:'lg', name:'Madrid', x:255, y:565, demand:65 },
+  { id:'bc', country:'ES', kind:'city', size:'md', name:'Barcelona', x:325, y:540, demand:50 },
+  { id:'li', country:'PT', kind:'city', size:'md', name:'Lisabon', x:140, y:580, demand:35 },
+  { id:'lo', country:'GB', kind:'city', size:'lg', name:'London', x:380, y:295, demand:85 },
+  { id:'du', country:'IE', kind:'city', size:'sm', name:'Dublin', x:285, y:275, demand:25 },
+  { id:'am', country:'NL', kind:'city', size:'md', name:'Amsterdam', x:530, y:305, demand:40 },
+  { id:'br', country:'BE', kind:'city', size:'sm', name:'Brisel', x:500, y:350, demand:30 },
+  { id:'zu', country:'CH', kind:'city', size:'md', name:'Zürich', x:578, y:420, demand:35 },
+  { id:'st_se', country:'SE', kind:'city', size:'md', name:'Stockholm', x:670, y:160, demand:40 },
+  { id:'os', country:'NO', kind:'city', size:'sm', name:'Oslo', x:570, y:155, demand:30 },
+  { id:'he', country:'FI', kind:'city', size:'sm', name:'Helsinki', x:760, y:180, demand:30 },
+  { id:'ko', country:'DK', kind:'city', size:'sm', name:'Kopenhagen', x:590, y:230, demand:25 },
+];
+
+// Predefinisani dalekovodi (od → do)
+const LINES = [
+  // BiH unutar
+  ['hejablanica','sub_sa'], ['tetuzla','sub_sa'], ['sub_sa','sa'],
+  ['sub_sa','mo'], ['sub_sa','bl'], ['sub_sa','tz'],
+  // HR
+  ['nekrsko','sub_zg'], ['henhh','sub_zg'], ['tep','sub_zg'],
+  ['sub_zg','zg'], ['sub_zg','st'], ['sub_zg','ri'], ['nekrsko','lj'],
+  // RS
+  ['tenikola','sub_bg'], ['hedjerdap','sub_bg'], ['sub_bg','bg'],
+  ['sub_bg','ns'], ['sub_bg','nis'],
+  // Interkonekcije BiH/HR/RS
+  ['sub_sa','sub_zg'], ['sub_sa','sub_bg'], ['sub_zg','sub_bg'],
+  // CG / MK
+  ['sub_sa','pg'], ['sub_bg','sk'], ['sol_mk','sk'],
+  // DE
+  ['wind_de','hh'], ['wind_de','be'], ['te_de','fr'], ['sol_de','mu'],
+  ['be','fr'], ['mu','fr'], ['hh','be'],
+  // FR
+  ['ne_fr1','pa'], ['ne_fr2','ly'], ['wind_fr','pa'], ['pa','ly'], ['ly','ma'],
+  // IT
+  ['te_it','ro'], ['sol_it','na'], ['ro','mi'], ['ro','na'],
+  // Veliki interkonektori
+  ['fr','zu'], ['zu','mi'], ['mu','vi'], ['vi','bp'], ['bp','bg'],
+  ['be','wa'], ['wa','pr'], ['pr','vi'], ['bp','bu'], ['bu','so'],
+  ['so','sk'], ['so','at'], ['at','sk'],
+  ['ma_es','bc'], ['ma_es','li'], ['bc','ma'],
+  ['lo','am'], ['lo','br'], ['am','fr'], ['br','am'], ['fr','zu'],
+  ['ko','hh'], ['st_se','os'], ['st_se','he'], ['os','ko'],
+];
+
+// Vrste kvarova
+const FAULT_TYPES = [
+  { id:'wire', name:'Prekid dalekovoda', ic:'🔌', task:'wire', sev:1 },
+  { id:'sub',  name:'Pad trafostanice', ic:'🏭', task:'options', sev:2 },
+  { id:'short',name:'Kratak spoj', ic:'⚡', task:'timing', sev:1 },
+  { id:'over', name:'Preopterećenje mreže', ic:'📈', task:'calc', sev:2 },
+  { id:'trans',name:'Kvar transformatora', ic:'🔧', task:'options', sev:2 },
+  { id:'plant',name:'Nestanak proizvodnje', ic:'🔋', task:'calc', sev:2 },
+  { id:'storm',name:'Oluja ruši vodove', ic:'⛈️', task:'wire', sev:3 },
+  { id:'fire', name:'Požar u trafostanici', ic:'🔥', task:'timing', sev:3 },
+  { id:'sab',  name:'Sabotaža', ic:'🕵️', task:'options', sev:3 },
+  { id:'cyber',name:'Cyber napad na mrežu', ic:'💻', task:'cyber', sev:4 },
+];
+
+// Level definicije
+const LEVELS = [
+  null,
+  { xp:0, unlocks:['BA','hydro','basicFaults'], note:'Bosna i Hercegovina · Hidroelektrane · Osnovni kvarovi' },
+  { xp:150, unlocks:['HR','RS','substations'], note:'Hrvatska · Srbija · Trafostanice · Novi kvarovi' },
+  { xp:400, unlocks:['SI','ME','MK','solar'], note:'Slovenija · CG · S. Makedonija · Solarne elektrane' },
+  { xp:800, unlocks:['DE','wind','moreConsumers'], note:'Njemačka · Vjetroelektrane · Više potrošača' },
+  { xp:1400, unlocks:['FR','nuclear'], note:'Francuska · Nuklearne elektrane' },
+  { xp:2200, unlocks:['IT','trade'], note:'Italija · Uvoz/izvoz energije' },
+  { xp:3200, unlocks:['ALL_EU','energyMarket'], note:'Cijela Evropa · Trgovina energijom' },
+  { xp:4500, unlocks:['disasters'], note:'Prirodne katastrofe: oluje, poplave, zemljotresi, toplotni valovi' },
+  { xp:6000, unlocks:['cyberAttacks','advProtection'], note:'Cyber napadi · Napredna zaštita mreže' },
+  { xp:8000, unlocks:['fullSim','dynamicPrices','aiAssist'], note:'Potpuna simulacija · Dinamične cijene · AI pomoćnici' },
+];
+
+// Tipovi elektrana
+const PLANT_TYPES = {
+  hydro:   { name:'Hidroelektrana',   ic:'💧', cost:1500, cap:80,  weather:'rain' },
+  thermal: { name:'Termoelektrana',   ic:'🏭', cost:1200, cap:120, weather:null },
+  nuclear: { name:'Nuklearna elektrana', ic:'☢️', cost:5000, cap:240, weather:null, lvl:5 },
+  solar:   { name:'Solarna elektrana', ic:'☀️', cost:900, cap:60, weather:'sun', lvl:3 },
+  wind:    { name:'Vjetroelektrana',  ic:'🌬️', cost:1100, cap:100, weather:'wind', lvl:4 },
+};
+
+// Research
+const RESEARCH = [
+  { id:'smart',  name:'Smart Grid',         ic:'🧠', cost:600,  desc:'Pametne mreže smanjuju gubitke za 15%.' },
+  { id:'ai',     name:'AI za predikciju',   ic:'🤖', cost:1200, desc:'Kvarovi se najavljuju 10s ranije.' },
+  { id:'super',  name:'Superprovodnici',    ic:'❄️', cost:2400, desc:'Dalekovodi prenose 30% više snage.' },
+  { id:'batt',   name:'Baterijski sistemi', ic:'🔋', cost:1500, desc:'Vršna potrošnja se izglađuje.' },
+  { id:'fusion', name:'Fuzijske elektrane', ic:'⚛️', cost:8000, desc:'Otključava fuzijsku elektranu.' },
+  { id:'protect',name:'Napredna zaštita',   ic:'🛡️', cost:1800, desc:'Smanjuje šansu za cyber napad za 50%.' },
+  { id:'autosub',name:'Automatizovane TS',  ic:'⚙️', cost:1000, desc:'Trafostanice se auto-rekonfigurišu.' },
+];
+
+/* ====================================================
+   STANJE IGRE
+   ==================================================== */
+const S = {
+  money: 1000,
+  xp: 0,
+  level: 1,
+  reputation: 75,
+  security: 100,
+  unlocked: new Set(['BA']),
+  features: new Set(['hydro','basicFaults']),
+  research: new Set(),
+  builtPlants: [],         // izgrađene dodatne elektrane (proceduralno)
+  brokenIds: new Set(),    // pokvareni objekti (place ili line key)
+  faults: [],              // aktivni kvarovi
+  taskCount: 0,
+  time: 8*60,              // minute u danu (0–1440), start 08:00
+  weather: 'clear',        // clear, cloudy, rain, storm, snow, heat
+  weatherUntil: 0,         // u igračkim minutama
+  particles: [],           // animacija toka struje
+  faultIdSeq: 1,
+  view: { scale:1, offX:0, offY:0 },
+  hover: null,
+};
+
+const PLACES_BY_ID = {};
+PLACES.forEach(p => PLACES_BY_ID[p.id] = p);
+
+// Mapa svih dalekovoda (po ključu "a|b")
+const LINE_KEYS = LINES.map(([a,b]) => `${a}|${b}`);
+
+/* ====================================================
+   CANVAS SETUP
+   ==================================================== */
+const map = document.getElementById('map');
+const ctx = map.getContext('2d');
+const W = () => map.width;
+const H = () => map.height;
+
+function resize(){
+  const r = window.devicePixelRatio || 1;
+  map.width = window.innerWidth * r;
+  map.height = window.innerHeight * r;
+  map.style.width = window.innerWidth + 'px';
+  map.style.height = window.innerHeight + 'px';
+  ctx.setTransform(r,0,0,r,0,0);
+  fitView();
+}
+window.addEventListener('resize', resize);
+
+// View transform: mapa-koordinate (0..1600 x 0..1000) → pixel
+const MAP_W = 1600, MAP_H = 1000;
+function fitView(){
+  const w = window.innerWidth, h = window.innerHeight;
+  const padTop = 70, padBottom = 70;
+  const sx = w / MAP_W;
+  const sy = (h - padTop - padBottom) / MAP_H;
+  S.view.scale = Math.min(sx, sy);
+  S.view.offX = (w - MAP_W * S.view.scale) / 2;
+  S.view.offY = padTop + ((h - padTop - padBottom) - MAP_H * S.view.scale)/2;
+}
+function toScreen(x,y){
+  return [ x*S.view.scale + S.view.offX, y*S.view.scale + S.view.offY ];
+}
+function fromScreen(px,py){
+  return [ (px - S.view.offX) / S.view.scale, (py - S.view.offY) / S.view.scale ];
+}
+
+/* ====================================================
+   LOADING SCREEN
+   ==================================================== */
+const lmap = document.getElementById('loadingMap');
+const lctx = lmap.getContext('2d');
+function sizeLoad(){
+  lmap.width = window.innerWidth;
+  lmap.height = window.innerHeight;
+}
+sizeLoad();
+window.addEventListener('resize', sizeLoad);
+
+const loadNodes = [];
+for (let i=0;i<40;i++){
+  loadNodes.push({ x: Math.random()*lmap.width, y: Math.random()*lmap.height });
+}
+const loadConns = [];
+for (let i=0;i<loadNodes.length;i++){
+  for (let j=i+1;j<loadNodes.length;j++){
+    const dx = loadNodes[i].x - loadNodes[j].x;
+    const dy = loadNodes[i].y - loadNodes[j].y;
+    if (Math.sqrt(dx*dx+dy*dy) < 180) loadConns.push([i,j]);
+  }
+}
+let loadT = 0;
+function drawLoading(){
+  lctx.clearRect(0,0,lmap.width,lmap.height);
+  loadT += 0.02;
+  for (const [a,b] of loadConns){
+    const A = loadNodes[a], B = loadNodes[b];
+    lctx.strokeStyle = '#1e3a5f';
+    lctx.lineWidth = 1;
+    lctx.beginPath();
+    lctx.moveTo(A.x, A.y);
+    lctx.lineTo(B.x, B.y);
+    lctx.stroke();
+    // particle
+    const t = (loadT + (a+b)*0.1) % 1;
+    const px = A.x + (B.x-A.x)*t;
+    const py = A.y + (B.y-A.y)*t;
+    lctx.fillStyle = '#22d3ee';
+    lctx.shadowColor = '#22d3ee';
+    lctx.shadowBlur = 8;
+    lctx.beginPath();
+    lctx.arc(px,py,2,0,Math.PI*2);
+    lctx.fill();
+    lctx.shadowBlur = 0;
+  }
+  for (const n of loadNodes){
+    lctx.fillStyle = '#7df9ff';
+    lctx.beginPath();
+    lctx.arc(n.x,n.y,2,0,Math.PI*2);
+    lctx.fill();
+  }
+}
+
+const loadSteps = [
+  'Inicijalizacija sistema...',
+  'Učitavanje mape Evrope...',
+  'Pokretanje elektrana...',
+  'Kalibracija dalekovoda...',
+  'Sinkronizacija frekvencije 50Hz...',
+  'Spajanje na evropsku mrežu...',
+  'Aktivacija nadzora...',
+  'Sistem spreman.',
+];
+
+let loadPct = 0, loadIdx = 0;
+const loadFill = document.getElementById('loadFill');
+const loadMsg = document.getElementById('loadMsg');
+const loadPctEl = document.getElementById('loadPct');
+
+function loadingTick(){
+  drawLoading();
+  loadPct += 0.4 + Math.random()*0.8;
+  if (loadPct > 100) loadPct = 100;
+  loadFill.style.width = loadPct + '%';
+  loadPctEl.textContent = Math.floor(loadPct) + '%';
+  const stepIdx = Math.min(loadSteps.length-1, Math.floor(loadPct/13));
+  if (stepIdx !== loadIdx){
+    loadIdx = stepIdx;
+    loadMsg.textContent = loadSteps[stepIdx];
+  }
+  if (loadPct >= 100){
+    setTimeout(finishLoading, 600);
+  } else {
+    requestAnimationFrame(loadingTick);
+  }
+}
+function finishLoading(){
+  document.getElementById('loadingScreen').classList.add('hide');
+  document.getElementById('game').classList.add('active');
+  setTimeout(() => {
+    document.getElementById('loadingScreen').remove();
+    showWelcome();
+    startGame();
+  }, 700);
+}
+loadingTick();
+
+/* ====================================================
+   POMOĆNE FUNKCIJE
+   ==================================================== */
+function rand(min,max){ return Math.random()*(max-min)+min; }
+function randInt(min,max){ return Math.floor(rand(min,max+1)); }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function fmt(n){ return Math.round(n).toLocaleString('de-DE'); }
+function lineKey(a,b){ return `${a}|${b}`; }
+
+/* ====================================================
+   UPDATE HUD
+   ==================================================== */
+function updateHud(){
+  document.getElementById('hMoney').textContent = fmt(S.money);
+  document.getElementById('hXp').textContent = fmt(S.xp);
+  document.getElementById('hRep').textContent = Math.round(S.reputation);
+  document.getElementById('hSec').textContent = Math.round(S.security);
+  document.getElementById('hLvl').textContent = S.level;
+  document.getElementById('faultBadge').textContent = S.faults.length;
+  document.getElementById('faultBadge').style.display = S.faults.length ? 'block' : 'none';
+}
+
+/* ====================================================
+   LOG
+   ==================================================== */
+function addLog(msg, kind=''){
+  const log = document.getElementById('log');
+  const e = document.createElement('div');
+  e.className = 'logEntry ' + kind;
+  const t = formatTime();
+  e.innerHTML = `<span class="t">${t}</span>${msg}`;
+  log.insertBefore(e, log.firstChild);
+  while (log.children.length > 4) log.removeChild(log.lastChild);
+  setTimeout(() => { e.style.transition = 'opacity .8s'; e.style.opacity = '0';
+    setTimeout(() => e.remove(), 800); }, 7000);
+}
+
+function toast(msg, kind=''){
+  const c = document.getElementById('toast');
+  const e = document.createElement('div');
+  e.className = 'toast ' + kind;
+  e.textContent = msg;
+  c.appendChild(e);
+  setTimeout(() => { e.style.transition = 'opacity .4s,transform .4s';
+    e.style.opacity = '0'; e.style.transform = 'translateY(-10px)';
+    setTimeout(() => e.remove(), 400); }, 2400);
+}
+
+/* ====================================================
+   VRIJEME
+   ==================================================== */
+function formatTime(){
+  const h = Math.floor(S.time/60) % 24;
+  const m = Math.floor(S.time%60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function isNight(){
+  const h = Math.floor(S.time/60) % 24;
+  return h < 6 || h >= 20;
+}
+
+/* ====================================================
+   VREMENSKI USLOVI
+   ==================================================== */
+const WEATHER = {
+  clear:  { ic:'☀️', name:'Vedro' },
+  cloudy: { ic:'⛅', name:'Oblačno' },
+  rain:   { ic:'🌧️', name:'Kiša' },
+  storm:  { ic:'⛈️', name:'Oluja' },
+  snow:   { ic:'❄️', name:'Snijeg' },
+  heat:   { ic:'🌡️', name:'Toplotni val' },
+};
+function maybeChangeWeather(){
+  if (S.time > S.weatherUntil){
+    const opts = ['clear','clear','cloudy','rain'];
+    if (S.features.has('disasters')) opts.push('storm','heat','snow');
+    S.weather = pick(opts);
+    S.weatherUntil = S.time + randInt(40,140);
+    document.getElementById('wxIcon').textContent = WEATHER[S.weather].ic;
+    document.getElementById('wxTxt').textContent = WEATHER[S.weather].name;
+  }
+}
+
+/* ====================================================
+   PROVJERA RAZINE (LEVEL UP)
+   ==================================================== */
+function checkLevelUp(){
+  if (S.level >= 10) return;
+  const next = LEVELS[S.level+1];
+  if (S.xp >= next.xp){
+    S.level++;
+    next.unlocks.forEach(u => {
+      if (COUNTRIES[u]) S.unlocked.add(u);
+      else if (u === 'ALL_EU') Object.keys(COUNTRIES).forEach(k => S.unlocked.add(k));
+      else S.features.add(u);
+    });
+    showLevelUp(S.level, next);
+  }
+}
+
+function showLevelUp(lvl, def){
+  const m = document.getElementById('modal');
+  m.innerHTML = `
+    <div class="levelUp">
+      <div>📊 LEVEL UP</div>
+      <div class="big">${lvl}</div>
+      <h2>Novi nivo pristupa</h2>
+      <p class="desc">Tvoj autoritet u mreži raste.</p>
+      <div class="unlocked">
+        <h4>Otključano</h4>
+        <div>✓ ${def.note}</div>
+      </div>
+      <div class="actions" style="justify-content:center">
+        <button class="btn primary" onclick="closeModal()">Nastavi rad</button>
+      </div>
+    </div>`;
+  showModal();
+}
+
+/* ====================================================
+   PROCEDURALNI GENERATOR KVAROVA
+   ==================================================== */
+let lastFaultTime = 0;
+let nextFaultDelay = randInt(20,40);
+
+function maybeGenerateFault(){
+  if (S.time - lastFaultTime < nextFaultDelay) return;
+  lastFaultTime = S.time;
+  nextFaultDelay = Math.max(15, randInt(35,80) - S.level*2);
+  if (S.faults.length >= 5) return; // cap
+
+  // Filter tipova prema features
+  let pool = FAULT_TYPES.filter(f => {
+    if (f.id === 'cyber' && !S.features.has('cyberAttacks')) return false;
+    if (f.id === 'storm' && !S.features.has('disasters') && S.weather !== 'storm') return false;
+    if (f.id === 'fire' && !S.features.has('disasters') && S.level < 5) return false;
+    if (f.id === 'sab' && S.level < 4) return false;
+    if (f.id === 'trans' && !S.features.has('substations')) return false;
+    return true;
+  });
+  if (S.weather === 'storm') pool = pool.concat([FAULT_TYPES.find(f=>f.id==='storm')]);
+
+  const ft = pick(pool);
+  // Lokacija: nasumični element u otključanim zemljama
+  const places = PLACES.filter(p => S.unlocked.has(p.country));
+  if (!places.length) return;
+  const place = pick(places);
+
+  // Težina raste sa levelom
+  const sevMod = ft.sev + Math.floor(S.level/3);
+  const fault = {
+    id: S.faultIdSeq++,
+    type: ft,
+    placeId: place.id,
+    severity: sevMod,
+    deadline: S.time + Math.max(40, 120 - S.level*5),
+    reward: { money: 80*sevMod + S.level*30, xp: 20*sevMod + S.level*5, rep: 1+ft.sev },
+    affected: place.demand || 20,
+    weather: S.weather,
+  };
+  S.faults.push(fault);
+  S.brokenIds.add(place.id);
+  // Iskljucimo i neku liniju u blizini
+  const nearby = LINES.filter(([a,b]) => a===place.id || b===place.id);
+  if (nearby.length){
+    const ln = pick(nearby);
+    S.brokenIds.add(lineKey(ln[0], ln[1]));
+  }
+  addLog(`${ft.ic} <b>${ft.name}</b> · ${place.name}`, 'bad');
+  toast(`⚠️ Kvar: ${ft.name}`, 'warn');
+  S.security = Math.max(0, S.security - 2);
+}
+
+/* ====================================================
+   PROVJERA DEADLINE KVAROVA
+   ==================================================== */
+function tickFaults(){
+  for (let i = S.faults.length - 1; i >= 0; i--){
+    const f = S.faults[i];
+    if (S.time > f.deadline){
+      // Neuspjeh
+      S.reputation = Math.max(0, S.reputation - 5 - f.severity);
+      S.security = Math.max(0, S.security - 3 - f.severity);
+      S.money = Math.max(0, S.money - 50*f.severity);
+      addLog(`✗ Kvar nije riješen na vrijeme: ${f.type.name}`, 'bad');
+      removeFault(f.id);
+    }
+  }
+}
+
+function removeFault(id){
+  const f = S.faults.find(x => x.id === id);
+  if (!f) return;
+  S.faults = S.faults.filter(x => x.id !== id);
+  S.brokenIds.delete(f.placeId);
+  // Pronađi i ukloni broken lines vezane uz mjesto
+  LINES.forEach(([a,b]) => {
+    if (a === f.placeId || b === f.placeId) S.brokenIds.delete(lineKey(a,b));
+  });
+}
+
+/* ====================================================
+   CRTANJE MAPE
+   ==================================================== */
+const STAR_FIELD = [];
+for (let i=0;i<80;i++) STAR_FIELD.push({ x: Math.random()*MAP_W, y: Math.random()*MAP_H*0.5, b: Math.random() });
+
+function draw(){
+  const t = performance.now();
+  ctx.clearRect(0,0,W(),H());
+
+  // Pozadina po dan/noć
+  const night = isNight();
+  const bg1 = night ? '#020410' : '#031020';
+  const bg2 = night ? '#04081a' : '#062035';
+  const grad = ctx.createLinearGradient(0,0,0,window.innerHeight);
+  grad.addColorStop(0, bg1);
+  grad.addColorStop(1, bg2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W(),H());
+
+  // Zvijezde noću
+  if (night){
+    ctx.fillStyle = '#fff';
+    for (const s of STAR_FIELD){
+      const [sx,sy] = toScreen(s.x, s.y);
+      ctx.globalAlpha = 0.3 + 0.7*Math.abs(Math.sin(t/2000 + s.b*10));
+      ctx.fillRect(sx, sy, 1.5, 1.5);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Države
+  for (const code in COUNTRIES){
+    const c = COUNTRIES[code];
+    const unl = S.unlocked.has(code);
+    ctx.beginPath();
+    c.poly.forEach((p,i) => {
+      const [x,y] = toScreen(p[0], p[1]);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = unl ? c.color : '#0a121e';
+    ctx.fill();
+    ctx.strokeStyle = unl ? '#2a4866' : '#0e1a2b';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Naziv države
+    if (unl && S.view.scale > 0.3){
+      const cx = c.poly.reduce((s,p)=>s+p[0],0)/c.poly.length;
+      const cy = c.poly.reduce((s,p)=>s+p[1],0)/c.poly.length;
+      const [sx,sy] = toScreen(cx,cy);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = `${Math.max(9, 10*S.view.scale)}px Inter`;
+      ctx.textAlign = 'center';
+      ctx.fillText(c.name.split(' ').slice(-1)[0].toUpperCase(), sx, sy);
+    }
+  }
+
+  // Vremenski efekti
+  drawWeather(t);
+
+  // Dalekovodi
+  for (const [a,b] of LINES){
+    const A = PLACES_BY_ID[a], B = PLACES_BY_ID[b];
+    if (!A || !B) continue;
+    if (!S.unlocked.has(A.country) || !S.unlocked.has(B.country)) continue;
+    const [ax,ay] = toScreen(A.x, A.y);
+    const [bx,by] = toScreen(B.x, B.y);
+    const broken = S.brokenIds.has(lineKey(a,b)) || S.brokenIds.has(a) || S.brokenIds.has(b);
+
+    // Sjena/baza
+    ctx.strokeStyle = broken ? '#3a1818' : '#0e2438';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(ax,ay); ctx.lineTo(bx,by);
+    ctx.stroke();
+
+    // Glow linija ako radi
+    if (!broken){
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = '#22d3ee';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(ax,ay); ctx.lineTo(bx,by);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Čestice
+      const dx = bx - ax, dy = by - ay;
+      const len = Math.sqrt(dx*dx+dy*dy);
+      const speed = 0.00015 * len;
+      const phase = (t * speed) % 1;
+      for (let k=0;k<3;k++){
+        const tt = (phase + k/3) % 1;
+        const px = ax + dx*tt;
+        const py = ay + dy*tt;
+        ctx.fillStyle = '#7df9ff';
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(px,py,2,0,Math.PI*2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    } else {
+      // Iskričavi efekat na pokvarenoj liniji
+      if (Math.random() < 0.3){
+        const tt = Math.random();
+        const px = ax + (bx-ax)*tt;
+        const py = ay + (by-ay)*tt;
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(px,py,3,0,Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  // Mjesta (elektrane, trafostanice, gradovi)
+  for (const p of PLACES){
+    if (!S.unlocked.has(p.country)) continue;
+    drawPlace(p, t);
+  }
+
+  // Dodatne izgrađene elektrane
+  for (const p of S.builtPlants){
+    drawPlace(p, t);
+  }
+
+  // Hover info
+  if (S.hover){
+    const [sx,sy] = toScreen(S.hover.x, S.hover.y);
+    ctx.fillStyle = '#0e1828ee';
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1;
+    const txt = S.hover.name;
+    ctx.font = '12px Inter';
+    const w = ctx.measureText(txt).width + 16;
+    ctx.fillRect(sx+12, sy-12, w, 22);
+    ctx.strokeRect(sx+12, sy-12, w, 22);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.textAlign = 'left';
+    ctx.fillText(txt, sx+20, sy+3);
+  }
+
+  // Kvarovi: ikonica iznad lokacije
+  for (const f of S.faults){
+    const p = PLACES_BY_ID[f.placeId] || S.builtPlants.find(x=>x.id===f.placeId);
+    if (!p) continue;
+    const [sx,sy] = toScreen(p.x, p.y);
+    const bob = Math.sin(t/300)*3;
+    ctx.font = '24px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.type.ic, sx, sy - 22 + bob);
+    // Krug upozorenja
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    const r = 18 + Math.sin(t/250)*3;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+function drawPlace(p, t){
+  const [sx,sy] = toScreen(p.x, p.y);
+  const broken = S.brokenIds.has(p.id);
+
+  if (p.kind === 'city'){
+    const r = p.size === 'lg' ? 6 : p.size === 'md' ? 4.5 : 3;
+    // Halo
+    ctx.fillStyle = broken ? '#3a1818' : '#0a1a2a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, r*1.8, 0, Math.PI*2);
+    ctx.fill();
+    // Tijelo
+    ctx.fillStyle = broken ? '#ef4444' : (isNight() ? '#fde68a' : '#facc15');
+    ctx.shadowColor = broken ? '#ef4444' : '#fde68a';
+    ctx.shadowBlur = isNight() && !broken ? 12 : 4;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Naziv
+    if (S.view.scale > 0.5 || p.size === 'lg'){
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = `${p.size==='lg'?12:10}px Inter`;
+      ctx.textAlign = 'left';
+      ctx.fillText(p.name, sx + r + 4, sy + 3);
+    }
+  } else if (p.kind === 'plant'){
+    const def = PLANT_TYPES[p.ptype];
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = broken ? '#7f1d1d' : '#0a1a2a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 14, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = broken ? '#ef4444' : '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillText(def.ic, sx, sy + 7);
+  } else if (p.kind === 'sub'){
+    // Trafostanica: kvadrat
+    const sz = 8;
+    ctx.fillStyle = broken ? '#7f1d1d' : '#0a1a2a';
+    ctx.fillRect(sx-sz, sy-sz, sz*2, sz*2);
+    ctx.strokeStyle = broken ? '#ef4444' : '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(sx-sz, sy-sz, sz*2, sz*2);
+    // Mali križ
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = '10px Inter';
+    ctx.fillText('⚡', sx, sy + 3);
+  }
+}
+
+/* ====================================================
+   VREMENSKI EFEKTI – overlay
+   ==================================================== */
+const rainDrops = [];
+const snowFlakes = [];
+function ensureRain(){
+  while (rainDrops.length < 200) rainDrops.push({ x: Math.random()*window.innerWidth, y: Math.random()*window.innerHeight, v: 4+Math.random()*4 });
+}
+function ensureSnow(){
+  while (snowFlakes.length < 100) snowFlakes.push({ x: Math.random()*window.innerWidth, y: Math.random()*window.innerHeight, v: 1+Math.random(), d: Math.random()*Math.PI*2 });
+}
+function drawWeather(t){
+  const w = S.weather;
+  if (w === 'rain' || w === 'storm'){
+    ensureRain();
+    ctx.strokeStyle = w === 'storm' ? '#7df9ff66' : '#7df9ff44';
+    ctx.lineWidth = 1;
+    for (const d of rainDrops){
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - 2, d.y + 10);
+      ctx.stroke();
+      d.y += d.v * (w==='storm' ? 2 : 1);
+      d.x -= 0.5;
+      if (d.y > window.innerHeight){ d.y = -10; d.x = Math.random()*window.innerWidth; }
+    }
+    if (w === 'storm' && Math.random() < 0.004){
+      // Munja
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0,0,W(),H());
+    }
+  } else if (w === 'snow'){
+    ensureSnow();
+    ctx.fillStyle = '#ffffff88';
+    for (const s of snowFlakes){
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 1.5, 0, Math.PI*2);
+      ctx.fill();
+      s.y += s.v;
+      s.x += Math.sin(t/1000 + s.d)*0.5;
+      if (s.y > window.innerHeight){ s.y = -5; s.x = Math.random()*window.innerWidth; }
+    }
+  } else if (w === 'heat'){
+    // Toplotni val: zlatni overlay
+    ctx.fillStyle = '#fb923c10';
+    ctx.fillRect(0,0,W(),H());
+  } else if (w === 'cloudy'){
+    ctx.fillStyle = '#0e182833';
+    ctx.fillRect(0,0,W(),H());
+  }
+}
+
+/* ====================================================
+   INPUT
+   ==================================================== */
+map.addEventListener('mousemove', e => {
+  const r = map.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  S.hover = findPlaceAt(px, py);
+  map.style.cursor = S.hover ? 'pointer' : 'crosshair';
+});
+map.addEventListener('mouseleave', () => { S.hover = null; });
+map.addEventListener('click', e => {
+  const r = map.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const p = findPlaceAt(px, py);
+  if (p){
+    const f = S.faults.find(x => x.placeId === p.id);
+    if (f) openFaultTask(f);
+    else showPlaceInfo(p);
+  } else {
+    // Možda kliknu na fault iznad mjesta
+    for (const f of S.faults){
+      const pp = PLACES_BY_ID[f.placeId];
+      if (!pp) continue;
+      const [sx,sy] = toScreen(pp.x, pp.y);
+      const dx = px-sx, dy = py-(sy-22);
+      if (dx*dx+dy*dy < 25*25){ openFaultTask(f); break; }
+    }
+  }
+});
+map.addEventListener('touchstart', e => {
+  if (e.touches.length === 1){
+    const r = map.getBoundingClientRect();
+    const px = e.touches[0].clientX - r.left, py = e.touches[0].clientY - r.top;
+    const p = findPlaceAt(px, py);
+    if (p){
+      const f = S.faults.find(x => x.placeId === p.id);
+      if (f){ openFaultTask(f); e.preventDefault(); }
+      else { showPlaceInfo(p); e.preventDefault(); }
+    } else {
+      for (const f of S.faults){
+        const pp = PLACES_BY_ID[f.placeId];
+        if (!pp) continue;
+        const [sx,sy] = toScreen(pp.x, pp.y);
+        const dx = px-sx, dy = py-(sy-22);
+        if (dx*dx+dy*dy < 25*25){ openFaultTask(f); e.preventDefault(); break; }
+      }
+    }
+  }
+}, { passive: false });
+
+function findPlaceAt(px, py){
+  for (const p of PLACES){
+    if (!S.unlocked.has(p.country)) continue;
+    const [sx,sy] = toScreen(p.x, p.y);
+    const dx = px-sx, dy = py-sy;
+    if (dx*dx+dy*dy < 16*16) return p;
+  }
+  for (const p of S.builtPlants){
+    const [sx,sy] = toScreen(p.x, p.y);
+    const dx = px-sx, dy = py-sy;
+    if (dx*dx+dy*dy < 16*16) return p;
+  }
+  return null;
+}
+
+/* ====================================================
+   MODAL
+   ==================================================== */
+const overlay = document.getElementById('overlay');
+const modalEl = document.getElementById('modal');
+function showModal(){ overlay.classList.add('show'); }
+function closeModal(){ overlay.classList.remove('show'); modalEl.innerHTML = ''; }
+overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+function showPlaceInfo(p){
+  let body = '';
+  if (p.kind === 'city'){
+    body = `<div class="desc">Potrošač · ${p.size==='lg'?'Veliki':p.size==='md'?'Srednji':'Mali'} · Potražnja: <b>${p.demand} MW</b><br>Zemlja: ${COUNTRIES[p.country].name}</div>`;
+  } else if (p.kind === 'plant'){
+    const def = PLANT_TYPES[p.ptype];
+    body = `<div class="desc">${def.name} · Kapacitet: <b>${p.cap} MW</b><br>Zemlja: ${COUNTRIES[p.country].name}</div>`;
+  } else if (p.kind === 'sub'){
+    body = `<div class="desc">Trafostanica · Raspodjeljuje energiju potrošačima.<br>Zemlja: ${COUNTRIES[p.country].name}</div>`;
+  }
+  modalEl.innerHTML = `<h2>${p.name}</h2>${body}
+    <div class="actions"><button class="btn" onclick="closeModal()">Zatvori</button></div>`;
+  showModal();
+}
+
+/* ====================================================
+   MINI-ZADACI ZA KVAROVE
+   ==================================================== */
+function openFaultTask(idOrObj){
+  const f = (typeof idOrObj === 'object') ? idOrObj : S.faults.find(x => x.id === idOrObj);
+  if (!f) return;
+  const place = PLACES_BY_ID[f.placeId] || S.builtPlants.find(x=>x.id===f.placeId);
+  const timeLeft = Math.max(0, f.deadline - S.time);
+  modalEl.innerHTML = `
+    <h2>${f.type.ic} ${f.type.name} <span class="badge-lvl">LV ${f.severity}</span></h2>
+    <div class="desc">📍 <b>${place.name}</b> · ${COUNTRIES[place.country].name}<br>
+      Pogođeno: <b>${f.affected}</b> potrošača · Rok: <b>${Math.round(timeLeft)} min</b></div>
+    <div class="reward">
+      <span>💰 +${f.reward.money}</span>
+      <span>⚡ +${f.reward.xp} XP</span>
+      <span>👥 +${f.reward.rep}</span>
+    </div>
+    <div id="taskArea" class="taskArea"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeModal()">Odgodi</button>
+      <button class="btn danger" onclick="bypassFault(${f.id})">Plati popravku (-${f.reward.money*2}$)</button>
+    </div>`;
+  showModal();
+  renderTask(f);
+}
+
+function bypassFault(id){
+  const f = S.faults.find(x => x.id === id);
+  if (!f) return;
+  const cost = f.reward.money * 2;
+  if (S.money < cost){ toast('Nemaš dovoljno novca', 'bad'); return; }
+  S.money -= cost;
+  S.reputation = Math.max(0, S.reputation - 2);
+  addLog(`💸 Plaćena vanjska popravka: ${f.type.name}`, 'warn');
+  removeFault(id);
+  closeModal();
+  updateHud();
+}
+
+function renderTask(f){
+  const area = document.getElementById('taskArea');
+  if (f.type.task === 'wire')      renderWireTask(area, f);
+  else if (f.type.task === 'options') renderOptionsTask(area, f);
+  else if (f.type.task === 'calc')    renderCalcTask(area, f);
+  else if (f.type.task === 'timing')  renderTimingTask(area, f);
+  else if (f.type.task === 'cyber')   renderCyberTask(area, f);
+}
+
+// 1) Spoji prekinuti vod (klikni dugmiće u tačnom redoslijedu)
+function renderWireTask(area, f){
+  const n = 4 + Math.min(4, f.severity);
+  const seq = [];
+  while (seq.length < n) {
+    const v = randInt(1, n);
+    if (!seq.includes(v)) seq.push(v);
+  }
+  const correctOrder = [...seq].sort((a,b)=>a-b);
+  const state = [];
+  area.innerHTML = `
+    <p style="margin-bottom:10px;font-size:13px;color:var(--muted)">
+      🔌 Spoji prekinuti dalekovod klikom na čvorove redom <b>od 1 do ${n}</b>.</p>
+    <div class="wireRow" id="wireRow"></div>
+    <p style="margin-top:14px;font-size:12px;color:var(--muted);text-align:center" id="wireStatus">Klikni 1</p>`;
+  const row = document.getElementById('wireRow');
+  // Pomiješani redoslijed prikaza
+  const shown = [...seq].sort(() => Math.random()-0.5);
+  shown.forEach(v => {
+    const b = document.createElement('button');
+    b.className = 'wireBtn';
+    b.textContent = v;
+    b.onclick = () => {
+      const expect = correctOrder[state.length];
+      if (v === expect){
+        b.classList.add('on');
+        b.disabled = true;
+        state.push(v);
+        if (state.length === correctOrder.length){
+          completeFault(f);
+        } else {
+          document.getElementById('wireStatus').textContent = `Klikni ${correctOrder[state.length]}`;
+        }
+      } else {
+        b.classList.add('wrong');
+        setTimeout(() => b.classList.remove('wrong'), 300);
+      }
+    };
+    row.appendChild(b);
+  });
+}
+
+// 2) Izbor između opcija
+function renderOptionsTask(area, f){
+  const correct = randInt(0,3);
+  const options = [
+    'Zamijeni glavni transformator T1 (110/35 kV)',
+    'Aktiviraj rezervnu liniju D2 i prebaci opterećenje',
+    'Pošalji ekipu za remont nakon završetka smjene',
+    'Izvrši kratak test izolacije na svim sabirnicama',
+    'Provjeri SCADA log za posljednjih 60 minuta',
+    'Pošalji nalog za hitnu intervenciju dispečeru',
+    'Smanji proizvodnju na najbližoj elektrani',
+    'Aktiviraj automatsko prebacivanje na rezervu',
+  ];
+  // Random 4 opcije, jedna označena kao tačna
+  const picked = [];
+  while (picked.length < 4){
+    const o = pick(options);
+    if (!picked.includes(o)) picked.push(o);
+  }
+  area.innerHTML = `
+    <p style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+      🛠️ Odaberi <b>optimalnu</b> intervenciju za ovaj kvar:</p>
+    <div class="options" id="optsGrid"></div>
+    <p style="margin-top:12px;font-size:11px;color:var(--muted);text-align:center">
+      Razmisli — pogrešan odabir košta sigurnost mreže.</p>`;
+  const g = document.getElementById('optsGrid');
+  picked.forEach((opt, i) => {
+    const b = document.createElement('button');
+    b.className = 'opt';
+    b.textContent = opt;
+    b.onclick = () => {
+      // Heuristika: prva opcija je "ispravna"
+      if (i === correct){
+        b.classList.add('picked');
+        b.style.borderColor = 'var(--good)';
+        b.style.background = '#0a2a1a';
+        completeFault(f);
+      } else {
+        S.security = Math.max(0, S.security - 3);
+        b.style.borderColor = 'var(--bad)';
+        b.style.background = '#3a1a1a';
+        setTimeout(() => failFault(f, 'Pogrešna intervencija'), 600);
+      }
+    };
+    g.appendChild(b);
+  });
+}
+
+// 3) Izračun nedostatka energije
+function renderCalcTask(area, f){
+  const a = randInt(100, 400);
+  const b = randInt(80, 250);
+  const c = randInt(50, 200);
+  const proizvodnja = a + b;
+  const potrosnja = a + b + c;
+  const ans = potrosnja - proizvodnja;
+  area.innerHTML = `
+    <p style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+      📊 Izračunaj koliko energije <b>nedostaje</b> mreži (u MW):</p>
+    <div class="calcDisplay">
+      Proizvodnja: ${a} + ${b} = <b>${proizvodnja} MW</b><br>
+      Potrošnja: ${potrosnja} MW
+    </div>
+    <input type="number" class="numInput" id="calcInput" placeholder="MW" autofocus>
+    <div class="actions" style="justify-content:center">
+      <button class="btn primary" onclick="checkCalc(${f.id}, ${ans})">Potvrdi</button>
+    </div>`;
+  setTimeout(() => document.getElementById('calcInput')?.focus(), 100);
+}
+function checkCalc(fid, ans){
+  const f = S.faults.find(x => x.id === fid);
+  if (!f) return;
+  const v = parseInt(document.getElementById('calcInput').value, 10);
+  if (v === ans) completeFault(f);
+  else {
+    S.security = Math.max(0, S.security - 2);
+    failFault(f, `Pogrešno. Tačan odgovor: ${ans} MW`);
+  }
+}
+
+// 4) Timing – stabilizacija frekvencije
+function renderTimingTask(area, f){
+  area.innerHTML = `
+    <p style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+      ⚡ Stabilizuj frekvenciju mreže: klikni kad je marker u <b>zelenoj zoni</b>.</p>
+    <div class="timingBar"><div class="timingMarker" id="timingMarker"></div></div>
+    <div class="actions" style="justify-content:center;margin-top:14px">
+      <button class="btn primary" id="timingBtn">Aktiviraj zaštitu</button>
+    </div>
+    <p style="text-align:center;margin-top:6px;font-size:11px;color:var(--muted)" id="timingTries">Pokušaj: 1/3</p>`;
+  let tries = 0, hits = 0;
+  document.getElementById('timingBtn').onclick = () => {
+    tries++;
+    const m = document.getElementById('timingMarker');
+    const r = m.getBoundingClientRect();
+    const parent = m.parentElement.getBoundingClientRect();
+    const pct = (r.left - parent.left) / (parent.width - r.width);
+    // Zelena zona je 30%–60%
+    if (pct >= 0.30 && pct <= 0.60){
+      hits++;
+      toast('Pogodak ✓', 'good');
+    } else {
+      toast('Promašaj', 'bad');
+    }
+    if (hits >= 2){ completeFault(f); return; }
+    if (tries >= 3){ failFault(f, 'Premalo pogodaka — frekvencija nestabilna'); return; }
+    document.getElementById('timingTries').textContent = `Pokušaj: ${tries+1}/3 · Pogoci: ${hits}/2`;
+  };
+}
+
+// 5) Cyber napad – sekvenca šifri
+function renderCyberTask(area, f){
+  const code = Array.from({length:5}, () => randInt(0,9)).join('');
+  area.innerHTML = `
+    <p style="margin-bottom:10px;font-size:13px;color:var(--muted)">
+      💻 Otkrij šifru napadača i unesi je. Sistem ti je dao <b>tri tragova</b>:</p>
+    <div style="background:var(--grid);padding:12px;border-radius:8px;font-family:monospace;font-size:13px;line-height:1.7">
+      Suma cifara: <b style="color:var(--live-2)">${code.split('').reduce((a,b)=>a+(+b),0)}</b><br>
+      Prva cifra: <b style="color:var(--live-2)">${code[0]}</b><br>
+      Zadnje 2 cifre (kao broj): <b style="color:var(--live-2)">${code.slice(3)}</b>
+    </div>
+    <input type="text" class="numInput" id="cyberInput" placeholder="5-cifren kod" maxlength="5" style="margin-top:12px">
+    <div class="actions" style="justify-content:center">
+      <button class="btn primary" onclick="checkCyber(${f.id}, '${code}')">Potvrdi</button>
+    </div>`;
+  setTimeout(() => document.getElementById('cyberInput')?.focus(), 100);
+}
+function checkCyber(fid, code){
+  const f = S.faults.find(x => x.id === fid);
+  if (!f) return;
+  const v = document.getElementById('cyberInput').value;
+  if (v === code) completeFault(f);
+  else {
+    S.security = Math.max(0, S.security - 5);
+    failFault(f, `Pogrešna šifra: ${code}`);
+  }
+}
+
+function completeFault(f){
+  S.money += f.reward.money;
+  S.xp += f.reward.xp;
+  S.reputation = Math.min(100, S.reputation + f.reward.rep);
+  S.security = Math.min(100, S.security + 1);
+  S.taskCount++;
+  removeFault(f.id);
+  addLog(`✓ Riješeno: ${f.type.name} · +${f.reward.money}$ +${f.reward.xp}XP`, 'good');
+  toast(`✓ +${f.reward.money}$  +${f.reward.xp} XP`, 'good');
+  closeModal();
+  updateHud();
+  checkLevelUp();
+}
+
+function failFault(f, reason){
+  S.security = Math.max(0, S.security - 3);
+  addLog(`✗ Pokušaj neuspješan: ${reason}`, 'bad');
+  toast(reason, 'bad');
+  // Ne uklanjamo kvar — i dalje vrijedi do deadlinea
+  closeModal();
+  updateHud();
+}
+
+/* ====================================================
+   PANEL: KVAROVI (lista)
+   ==================================================== */
+function openFaults(){
+  if (!S.faults.length){
+    modalEl.innerHTML = `<h2>⚠️ Aktivni kvarovi</h2>
+      <div class="desc">Trenutno nema aktivnih kvarova. Mreža je stabilna. 🟢</div>
+      <div class="actions"><button class="btn" onclick="closeModal()">Zatvori</button></div>`;
+    showModal();
+    return;
+  }
+  let html = `<h2>⚠️ Aktivni kvarovi (${S.faults.length})</h2>
+    <div class="desc">Klikni za rješavanje. Svaki nerijeen kvar smanjuje sigurnost i reputaciju.</div>
+    <div class="menu-list">`;
+  for (const f of S.faults){
+    const p = PLACES_BY_ID[f.placeId] || S.builtPlants.find(x=>x.id===f.placeId);
+    const tl = Math.max(0, f.deadline - S.time);
+    html += `<div class="menu-item" onclick="closeModal();setTimeout(()=>openFaultTask(${ftRef(f.id)}),100)">
+      <div class="mi-ic">${f.type.ic}</div>
+      <div class="mi-body">
+        <div class="mi-name">${f.type.name}</div>
+        <div class="mi-desc">📍 ${p?.name||'?'} · ⏱ ${Math.round(tl)} min · LV ${f.severity}</div>
+      </div>
+      <div class="mi-cost">+${f.reward.money}$</div>
+    </div>`;
+  }
+  html += `</div><div class="actions"><button class="btn" onclick="closeModal()">Zatvori</button></div>`;
+  modalEl.innerHTML = html;
+  showModal();
+}
+function ftRef(id){ return id; }
+// openFaultTask je top-level deklaracija — automatski dostupna iz onclick atributa
+
+/* ====================================================
+   PANEL: GRADNJA
+   ==================================================== */
+window.BUILD_TAB = 'plants';
+function openBuild(){
+  const tab = window.BUILD_TAB || 'plants';
+  let html = `<h2>🏗️ Gradnja</h2>
+    <div class="desc">Investiraj u novu infrastrukturu. Nove elektrane povećavaju kapacitet mreže.</div>
+    <div class="menu-tabs">
+      <button class="menu-tab ${tab==='plants'?'active':''}" onclick="window.BUILD_TAB='plants';openBuild()">Elektrane</button>
+      <button class="menu-tab ${tab==='upgrade'?'active':''}" onclick="window.BUILD_TAB='upgrade';openBuild()">Nadogradnje</button>
+    </div>
+    <div class="menu-list">`;
+  if (tab === 'plants'){
+    for (const key in PLANT_TYPES){
+      const t = PLANT_TYPES[key];
+      const need = t.lvl || 1;
+      const locked = !S.features.has(key) && key!=='thermal' && key!=='hydro';
+      const canAfford = S.money >= t.cost && S.level >= need;
+      html += `<div class="menu-item ${locked?'locked':''}" ${!locked && canAfford?`onclick="buildPlant('${key}')"`:''}>
+        <div class="mi-ic">${t.ic}</div>
+        <div class="mi-body">
+          <div class="mi-name">${t.name}</div>
+          <div class="mi-desc">Kapacitet: ${t.cap} MW · ${locked?`Otključava se na Lv ${need}`:''}</div>
+        </div>
+        <div class="mi-cost">${fmt(t.cost)}$</div>
+      </div>`;
+    }
+  } else {
+    const upgrades = [
+      { name:'Pojačaj trafostanicu', desc:'+10 kapaciteta', cost:500, ic:'🔧', do:()=>{ toast('Trafostanica pojačana','good'); S.reputation = Math.min(100,S.reputation+1); } },
+      { name:'Dodaj rezervni dalekovod', desc:'-20% šanse za prekid', cost:800, ic:'🔌', do:()=>{ toast('Rezervna linija postavljena','good'); } },
+      { name:'Antišpijunski softver',  desc:'Cyber zaštita +10', cost:1200, ic:'🛡️', do:()=>{ toast('Sigurnost povećana','good'); S.security = Math.min(100, S.security+10); } },
+      { name:'Edukacija osoblja',     desc:'Brže rješavanje kvarova', cost:600, ic:'📚', do:()=>{ toast('Tim trenirana','good'); S.reputation = Math.min(100,S.reputation+3); } },
+    ];
+    for (const u of upgrades){
+      const can = S.money >= u.cost;
+      html += `<div class="menu-item ${can?'':'locked'}" ${can?`onclick="doUpgrade(${upgrades.indexOf(u)})"`:''}>
+        <div class="mi-ic">${u.ic}</div>
+        <div class="mi-body">
+          <div class="mi-name">${u.name}</div>
+          <div class="mi-desc">${u.desc}</div>
+        </div>
+        <div class="mi-cost">${fmt(u.cost)}$</div>
+      </div>`;
+    }
+    window._UPGRADES = upgrades;
+  }
+  html += `</div><div class="actions"><button class="btn" onclick="closeModal()">Zatvori</button></div>`;
+  modalEl.innerHTML = html;
+  showModal();
+}
+window.buildPlant = (key) => {
+  const t = PLANT_TYPES[key];
+  if (S.money < t.cost){ toast('Nedovoljno novca','bad'); return; }
+  S.money -= t.cost;
+  // Postavi u nasumičnu otključanu zemlju, na malu nasumičnu poziciju
+  const countries = [...S.unlocked];
+  const c = pick(countries);
+  const cdef = COUNTRIES[c];
+  const cx = cdef.poly.reduce((s,p)=>s+p[0],0)/cdef.poly.length + rand(-20,20);
+  const cy = cdef.poly.reduce((s,p)=>s+p[1],0)/cdef.poly.length + rand(-20,20);
+  const id = 'b_' + Date.now();
+  const plant = { id, country:c, kind:'plant', ptype:key, name:t.name + ' ' + (S.builtPlants.length+1), x:cx, y:cy, cap:t.cap };
+  S.builtPlants.push(plant);
+  PLACES_BY_ID[id] = plant;
+  // Spoji ga na najbližu trafostanicu/grad
+  let best = null, bd = Infinity;
+  for (const p of PLACES){
+    if (p.country !== c || p.kind === 'plant') continue;
+    const dx = p.x - cx, dy = p.y - cy;
+    const d = dx*dx+dy*dy;
+    if (d < bd){ bd = d; best = p; }
+  }
+  if (best) LINES.push([id, best.id]);
+  toast(`✓ Izgrađeno: ${plant.name}`, 'good');
+  addLog(`🏗️ Izgrađeno: ${plant.name} u ${cdef.name}`, 'good');
+  S.xp += 30; S.reputation = Math.min(100, S.reputation+2);
+  closeModal();
+  updateHud();
+  checkLevelUp();
+};
+window.doUpgrade = (idx) => {
+  const u = window._UPGRADES[idx];
+  if (S.money < u.cost){ toast('Nedovoljno novca','bad'); return; }
+  S.money -= u.cost;
+  u.do();
+  closeModal();
+  updateHud();
+};
+
+/* ====================================================
+   PANEL: ISTRAŽIVANJE
+   ==================================================== */
+function openResearch(){
+  let html = `<h2>🔬 Istraživanje</h2>
+    <div class="desc">Investiraj u napredne tehnologije za bolju kontrolu mreže.</div>
+    <div class="menu-list">`;
+  for (const r of RESEARCH){
+    const owned = S.research.has(r.id);
+    const can = S.money >= r.cost;
+    html += `<div class="menu-item ${owned?'owned':(can?'':'locked')}"
+      ${!owned && can?`onclick="researchTech('${r.id}', ${r.cost})"`:''}>
+      <div class="mi-ic">${r.ic}</div>
+      <div class="mi-body">
+        <div class="mi-name">${r.name} ${owned?'✓':''}</div>
+        <div class="mi-desc">${r.desc}</div>
+      </div>
+      <div class="mi-cost">${owned?'KUPLJENO':fmt(r.cost)+'$'}</div>
+    </div>`;
+  }
+  html += `</div><div class="actions"><button class="btn" onclick="closeModal()">Zatvori</button></div>`;
+  modalEl.innerHTML = html;
+  showModal();
+}
+window.researchTech = (id, cost) => {
+  if (S.money < cost){ toast('Nedovoljno novca','bad'); return; }
+  S.money -= cost;
+  S.research.add(id);
+  const r = RESEARCH.find(x=>x.id===id);
+  toast(`✓ Istraženo: ${r.name}`, 'good');
+  addLog(`🔬 Istraženo: ${r.name}`, 'good');
+  S.xp += 50;
+  closeModal();
+  updateHud();
+  checkLevelUp();
+};
+
+/* ====================================================
+   INFO
+   ==================================================== */
+function openInfo(){
+  modalEl.innerHTML = `
+    <h2>ℹ️ Power Grid Europe</h2>
+    <div class="desc">Upravljaš elektroenergetskim sistemom Evrope. Tvoj zadatak: održati mrežu stabilnom, rješavati kvarove i širiti infrastrukturu.</div>
+    <div style="background:var(--grid);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;margin-bottom:10px">
+      <b>Statistika:</b><br>
+      🌍 Otključano zemalja: <b>${S.unlocked.size}</b> / ${Object.keys(COUNTRIES).length}<br>
+      🔬 Istraženo tehnologija: <b>${S.research.size}</b> / ${RESEARCH.length}<br>
+      🏗️ Izgrađene elektrane: <b>${S.builtPlants.length}</b><br>
+      ✓ Riješeni zadaci: <b>${S.taskCount}</b><br>
+      📊 Trenutni level: <b>${S.level}</b> · Sljedeći na <b>${S.level<10?LEVELS[S.level+1].xp+' XP':'MAX'}</b>
+    </div>
+    <div style="background:var(--grid);padding:12px;border-radius:8px;font-size:12px;line-height:1.6">
+      <b>Kontrole:</b><br>
+      • Klikni na objekat za informacije<br>
+      • Klikni na <span style="color:var(--bad)">crveni krug</span> za rješavanje kvara<br>
+      • Koristi bočno meni za gradnju, istraživanje, kvarove<br>
+      • Igra se nastavlja u realnom vremenu — kvarovi se generišu nasumično
+    </div>
+    <div class="actions"><button class="btn primary" onclick="closeModal()">Nazad u igru</button></div>`;
+  showModal();
+}
+
+/* ====================================================
+   WELCOME
+   ==================================================== */
+function showWelcome(){
+  modalEl.innerHTML = `
+    <h2>⚡ Dobrodošao, operatere</h2>
+    <div class="desc">Preuzimaš kontrolu nad elektroenergetskim sistemom <b>Bosne i Hercegovine</b>. Iz dispečerskog centra pratiš tok energije, rješavaš kvarove i investiraš u novu infrastrukturu.</div>
+    <div class="welcome-grid">
+      <div class="welcome-cell"><span class="em">⚡</span>Tok struje</div>
+      <div class="welcome-cell"><span class="em">🏭</span>Elektrane</div>
+      <div class="welcome-cell"><span class="em">🏙️</span>Potrošači</div>
+      <div class="welcome-cell"><span class="em">⚠️</span>Kvarovi</div>
+      <div class="welcome-cell"><span class="em">🔬</span>Istraživanje</div>
+      <div class="welcome-cell"><span class="em">🌍</span>10 Levela</div>
+    </div>
+    <div style="background:var(--grid);padding:10px;border-radius:8px;font-size:12px;color:var(--muted);text-align:center;margin-bottom:6px">
+      Igra je beskonačna — koliko god napreduješ, sistem generiše nove izazove.
+    </div>
+    <div class="actions" style="justify-content:center">
+      <button class="btn primary" onclick="closeModal()">Pokreni mrežu</button>
+    </div>`;
+  showModal();
+}
+
+/* ====================================================
+   GAME LOOP
+   ==================================================== */
+let lastFrame = performance.now();
+let gameStarted = false;
+function startGame(){
+  if (gameStarted) return;
+  gameStarted = true;
+  resize();
+  updateHud();
+  addLog('🟢 Sistem aktivan. Mreža pod kontrolom.', 'good');
+  requestAnimationFrame(loop);
+}
+
+function loop(now){
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+
+  // Vrijeme: 1 sec realnog = 0.5 minuta u igri (sporo)
+  S.time += dt * 0.5;
+  if (S.time > 1440) S.time -= 1440;
+  document.getElementById('clock').textContent = formatTime();
+
+  maybeChangeWeather();
+  maybeGenerateFault();
+  tickFaults();
+
+  // Pasivni prihod (ako mreža radi)
+  if (S.security > 30){
+    S.money += dt * (1.5 + S.level*0.3) * (S.security/100);
+  }
+  // Sigurnost se polako oporavlja
+  S.security = Math.min(100, S.security + dt * 0.5);
+
+  draw();
+  updateHud();
+  requestAnimationFrame(loop);
+}
+
+</script>
+</body>
+</html>
